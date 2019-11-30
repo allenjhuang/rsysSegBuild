@@ -1,60 +1,60 @@
-/*
-NAME
-  segBuild.js - Clunky implementation of automating building a segmentation dashboard in Responsys Interact using a combination of two fields.
-
-DESCRIPTION
-  RI Segmentation Dashboard Builder Script
-  Heavily inspired by Justin Hilborn's original segmentation dashboard bookmarklet.
-  Potential future updates: Account for the maximum rules allowed (100), move variables into an object, use fewer hardcoded values, improve clarity, implement a cleaner abort, support for more than 3 fields.
-  Last updated: 5/23/19
-
-INSTRUCTIONS
-  1. Edit lines 23 - 29 of this script for your campaign.
-  2. Go to Responsys Interact's navigation sidebar -> Data -> Manage Lists -> Create or edit a segmentation dashboard -> Segments -> Rules.
-  3. Open up the browser's web console (CTRL + Shift + K on Firefox).
-  4. Run this script by copying and pasting this whole script into the web console.
-  5. Check to see if the rules were added correctly.
-
-  - If there was an error, type the "frame.setAttribute("onload", "");" command into the console. It would be best to navigate away from the page to clean up the variables.
-  - Set abort to 1 or type in "Segmentation.abort();" into the console to stop the script.
-*/
+/* rsysSegBuild.js
+ * Last updated 11/30/19
+ */
 
 // Assign values specific to the campaign here.
-var field0 = 'PERSONA_NBR';  // The actual column/field names, case-sensitive
-var field1 = 'MAILER_VERSION_ID';
-var field2 = '';
-var field0ValuesArray = ['1', '2'];
-var field1ValuesArray = ['1', '2', '6', '7', '8', '13', '14', '15', '18', '19', '20', '22', '27', '29'];
-var field2ValuesArray = [];
-var field0Abbrev = 'P', field1Abbrev = 'MV', field2Abbrev = '';  // Optional. Used for the rule names; for example: P1MV2
-
-
-/* |||||||||||||||||||||||||||||||||||||||| *\
-  Only modify below this line if necessary.
-\* |||||||||||||||||||||||||||||||||||||||| */
-
-// Declare additional global variables.
-var maxRules = 100;  // TODO: Actually use this somewhere, currently does nothing.
-/*
-  IDEA for maxRules usage
-    1. Create an array that will have the length of the fields in use pushed into it.
-    2. Use the reduce method to multiply each element within the array to get the total amount of rules.
-    3. If total amount of rules is greater than maxRules, do not continue and return error message.
-*/
-// Another IDEA: Move most of the global variables into an object. Or just use a regular class and not a class with static methods.
+var config = {
+  fields: [
+    {
+      name: "PERSONA",  // The actual column/field names, case-sensitive
+      abbreviation: "P",  // Used for the rule names, for example: P1MV2
+      values: [1, 2]
+    },
+    {
+      name: "MAILER_VERSION_ID",
+      abbreviation: "MV",
+      values: [1, 2]
+    }
+  ],
+  // Don't edit below here unless necessary.
+  maximumRules: 100,
+  targetFrameStr: "document.getElementById('main2').contentDocument" +
+    ".getElementsByTagName('iframe')[0]"
+};
 var field0ValuesArrayLen, field1ValuesArrayLen, field2ValuesArrayLen;
 var fieldsCounter = 0;
 var i, j, k;
 var abort = 0;
 
-// Save working iframe in easy-to-access variables.
-var frame = document.getElementById("main2").contentDocument.getElementsByTagName("iframe")[0];
-var frameDoc = frame.contentDocument;
 
-// Had to assign the class to a var or else the class wouldn't be in the global namespace.
-var Segmentation = class
+// Assign the class to a var, else the class won't be in the global namespace.
+var SegmentationBuilder = class SegmentationBuilder
 {
-  static start()
+  constructor(config)
+  {
+    this.config = ingestConfig(config);
+  }
+
+  ingestConfig(config)
+  {
+    let updatedConfig = {
+      fields: config.fields,
+      fieldsLength: config.fields.length,
+      maximumRules: config.maximumRules,
+      targetFrameStr: "document.getElementById('main2').contentDocument" +
+        ".getElementsByTagName('iframe')[0]",
+      targetFrameDocStr: "targetFrame.contentDocument",
+      abortFlag = 0;  // If not 0, a separate function will stop the script.
+    };
+    for (let i = 0; i < updatedConfig.fieldsLength; ++i)
+    {
+      updatedConfig.fields[i].valuesLength =
+        updatedConfig.fields[i].values.length
+    }
+    return updatedConfig;
+  }
+
+  start()
   {
     console.log("Starting...");
     abort = 0;
@@ -65,7 +65,12 @@ var Segmentation = class
 
     // Check if field is being used.
     // TODO: Could definitely revamp the ifs below here to be more elegant in the future.
-    if (Array.isArray(field0ValuesArray) && field0ValuesArray.length !== 0 && typeof field0 === "string" && field0.length !== 0)
+    if (
+      Array.isArray(field0ValuesArray) &&
+      field0ValuesArray.length !== 0 &&
+      typeof field0 === "string" &&
+      field0.length !== 0
+    )
     {
       // Initialize loop variable.
       i = 0;
@@ -324,5 +329,5 @@ var Segmentation = class
   }
 }
 
-
-Segmentation.start();  // This starts the whole thing.
+var currentDashboardBuild = new SegmentationBuilder(config);
+currentDashboardBuild.start();
