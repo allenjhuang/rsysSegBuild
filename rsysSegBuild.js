@@ -1,19 +1,28 @@
 /* rsysSegBuild.js
- * Last updated 11/30/19
+ * Last updated 12/1/19
  */
 
 // Assign values specific to the campaign here.
 var config = {
   fields: [
     {
-      name: "PERSONA",  // The actual column/field names, case-sensitive
-      abbreviation: "P",  // Used for the rule names, for example: P1MV2
-      values: [1, 2]
+      name: "EMAIL_ISP_",  // The actual column/field names, case-sensitive
+      abbreviation: "ISP-",  // Used for the rule names
+      values: ["AOL", "Gmail", "Hotmail", "Yahoo", "Other"]
     },
     {
-      name: "MAILER_VERSION_ID",
-      abbreviation: "MV",
-      values: [1, 2]
+      name: "STATE_",
+      abbreviation: "__STATE-",
+      values: [
+        "AL", "AR", "CA", 1, 2, 3, 4, 5, 6, 7, 8, 9, 0
+      ]
+    },
+    {
+      name: "CITY_",
+      abbreviation: "__CITY-",  // Example: ISP-AOL__STATE-AL__CITY-Franklin
+      values: [
+        "Franklin", 1, 2, 3, 4, 5, 6, 7, 8, 9, 0
+      ]
     }
   ],
   // Don't edit below here unless necessary.
@@ -21,311 +30,353 @@ var config = {
   targetFrameStr: "document.getElementById('main2').contentDocument" +
     ".getElementsByTagName('iframe')[0]"
 };
-var field0ValuesArrayLen, field1ValuesArrayLen, field2ValuesArrayLen;
-var fieldsCounter = 0;
-var i, j, k;
-var abort = 0;
 
 
 // Assign the class to a var, else the class won't be in the global namespace.
-var SegmentationBuilder = class SegmentationBuilder
+var SegmentationBuilder = class
 {
   constructor(config)
   {
-    this.config = ingestConfig(config);
+    this._config = this._ingestConfig(config);
   }
 
-  ingestConfig(config)
+  // Public
+  abort()
   {
-    let updatedConfig = {
-      fields: config.fields,
-      fieldsLength: config.fields.length,
-      maximumRules: config.maximumRules,
-      targetFrameStr: "document.getElementById('main2').contentDocument" +
-        ".getElementsByTagName('iframe')[0]",
-      targetFrameDocStr: "targetFrame.contentDocument",
-      abortFlag = 0;  // If not 0, a separate function will stop the script.
-    };
-    for (let i = 0; i < updatedConfig.fieldsLength; ++i)
+    this._config.abort = true;
+    console.log("Attempting to abort...");
+  }
+
+  start(check=true, config=undefined)
+  {
+    if (config)
     {
-      updatedConfig.fields[i].valuesLength =
-        updatedConfig.fields[i].values.length
+      this._config = this._ingestConfig(config)
     }
-    return updatedConfig;
-  }
-
-  start()
-  {
-    console.log("Starting...");
-    abort = 0;
-
-    // Define the frame and frameDoc variables again within the function scope just in case.
-    let frame = document.getElementById("main2").contentDocument.getElementsByTagName("iframe")[0];
-    let frameDoc = frame.contentDocument;
-
-    // Check if field is being used.
-    // TODO: Could definitely revamp the ifs below here to be more elegant in the future.
-    if (
-      Array.isArray(field0ValuesArray) &&
-      field0ValuesArray.length !== 0 &&
-      typeof field0 === "string" &&
-      field0.length !== 0
-    )
+    if (check && this._checkMaximumRules === "ok")
     {
-      // Initialize loop variable.
-      i = 0;
-      // Set length in a variable for easier reference later.
-      field0ValuesArrayLen = field0ValuesArray.length;
+      console.log("Starting...");
+
+      this._config.abort = false;
+      this._addSegmentRule();
     }
     else
     {
-      console.log("ERROR: Please fill out the values for field0 in the script.");
-    }
-
-    if (Array.isArray(field1ValuesArray) && field1ValuesArray.length !== 0 && typeof field1 === "string" && field1.length !== 0)
-    {
-      j = 0;
-      field1ValuesArrayLen = field1ValuesArray.length;
-      // Add 1 to the fieldsCounter for later use.
-      ++fieldsCounter;  // Be careful when using ++ and --, stick to the long form for expressions.
-      console.log("Found field1 in use.");
-    }
-
-    if (Array.isArray(field2ValuesArray) && field2ValuesArray.length !== 0 && typeof field2 === "string" && field2.length !== 0)
-    {
-      k = 0;
-      field2ValuesArrayLen = field2ValuesArray.length;
-      ++fieldsCounter;
-      console.log("Found field2 in use.");
-    }
-
-    // The first field (field0) must be used. i, j, and k are only initalized as numbers once the field values are detected above.
-    if (typeof i === "number" && typeof j === "undefined" && typeof k === "number")
-    {
-      console.log("ERROR: Please don't fill out field2 without filling out field1.");
-    }
-    else if  // one of these conditions are true... (JavaScript logical ANDs have higher precedence than logical ORs.)
-    (
-      typeof i === "number" && typeof j === "undefined" && typeof k === "undefined" ||
-      typeof i === "number" && typeof j === "number"
-    )
-    {
-      // console.log(`DEBUG\ntypeof i: "${typeof i}"\ntypeof j: "${typeof j}"\ntypeof k: "${typeof k}"`);
-      this.addSegmentRule();  // The "this" refers back to the class containing this method.
+      this._aborting();
     }
   }
 
-
-  static addSegmentRule()
+  forceStart(config=undefined)
   {
-    // Check on abort flag. If set to 1, begin abort process.
-    if (abort === 1)
+    this.start(check=false, config=config);
+  }
+
+  deleteFirstRule()
+  {
+    // TODO: Suppress confirmation box.
+    // Check on abort flag. If set to true, begin abort process.
+    if (this._config.abort === true)
     {
-      this.aborting();
+      this._aborting();
+    }
+    else
+    {
+      console.log("Deleting the first segmentation rule...");
+
+      let targetFrame = this._getTargetFrame(this._config.targetFrameStr);
+      let targetFrameDoc = targetFrame.contentDocument;
+
+      let deleteSegmentRuleLinks = targetFrameDoc.querySelectorAll(
+        `a[href^="javascript:submitRule('rule"][href$="', 'delete')"]`
+      );
+      let deleteSegmentRule;
+      // console.log("Searching for the \"Delete\" link...");
+      for (
+        let i = 0, deleteSegmentRuleLinksLen = deleteSegmentRuleLinks.length;
+        i < deleteSegmentRuleLinksLen;
+        ++i
+      )
+      {
+        if (deleteSegmentRuleLinks[i].innerHTML === "Delete")
+        {
+          deleteSegmentRule = deleteSegmentRuleLinks[i];
+          break;
+        }
+      }
+      if (deleteSegmentRule === undefined)
+      {
+        console.log("The \"Delete\" link couldn't be found!");
+      }
+
+      deleteSegmentRule.click();  // Click on the Add Segment Rule link.
+    }
+  }
+
+  // Private
+  _addSegmentRule()
+  {
+    if (this._config.abort === true)
+    {
+      this._aborting();
     }
     else
     {
       console.log("Adding segmentation rule...");
 
-      let frame = document.getElementById("main2").contentDocument.getElementsByTagName("iframe")[0];
-      let frameDoc = frame.contentDocument;
+      let targetFrame = this._getTargetFrame(this._config.targetFrameStr);
+      let targetFrameDoc = targetFrame.contentDocument;
 
-      // The querySelectorAll method will return a NodeList, an array-like object. The double escape with backslashes is necessary.
-      let addSegmentRuleLinks = frameDoc.querySelectorAll("a[href='javascript:submitRule(\\'\\', \\'addRule\\')']");
+      // Escape the backslashes which will escape the single quotes.
+      let addSegmentRuleLinks = targetFrameDoc.querySelectorAll(
+        "a[href='javascript:submitRule(\\'\\', \\'addRule\\')']"
+      );
       let addSegmentRule;
-      // Go through each anchor tag in the NodeList and find the first one that says "Add Segment Rule".
-      console.log("Searching for the 'Add Segment Rule' link...");
-      for (let index = 0, addSegmentRuleLinksLen = addSegmentRuleLinks.length; index < addSegmentRuleLinksLen; ++index)
+      // console.log("Searching for the \"Add Segment Rule\" link...");
+      for (
+        let i = 0, addSegmentRuleLinksLen = addSegmentRuleLinks.length;
+        i < addSegmentRuleLinksLen;
+        ++i
+      )
       {
-        if (addSegmentRuleLinks[index].innerHTML === "Add Segment Rule")
+        if (addSegmentRuleLinks[i].innerHTML === "Add Segment Rule")
         {
-          addSegmentRule = addSegmentRuleLinks[index];
+          addSegmentRule = addSegmentRuleLinks[i];
           break;
         }
       }
       if (addSegmentRule === undefined)
       {
-        console.log("The 'Add Segment Rule' link couldn't be found!");
+        console.log("The \"Add Segment Rule\" link couldn't be found!");
       }
 
-      // Set a function/method to run when the page reloads.
+      // Set a function to run when the page reloads.
       let onloadValue;
-      if (fieldsCounter !== 0)
+      if (this._config.fieldsLength > 1)
       {
-        // Set the method to addField if more than one expected field.
-        onloadValue = "window.top.Segmentation.addField(" + fieldsCounter.toString() + ", 0);";
+        // Set the method to _addField if more than one expected field.
+        onloadValue = `window.top.${this._getInstanceName()}._addField(` +
+          `${(this._config.fieldsLength-1).toString()}, 0);`;
       }
       else
       {
-        // Skip adding fields and set the method to fillRuleDetails if only field0 is being used.
-        onloadValue = "window.top.Segmentation.fillRuleDetails();";
+        // Skip adding fields if only one field is being used.
+        onloadValue =
+          `window.top.${this._getInstanceName()}.fillRuleDetails();`;
       }
-      frame.setAttribute("onload", onloadValue);
+      targetFrame.setAttribute("onload", onloadValue);
 
       addSegmentRule.click();  // Click on the Add Segment Rule link.
-      addSegmentRule = undefined;  // Reset addSegmentRule to undefined for the next time.
     }
   }
 
-
-  static addField(fieldsCounterCopy, addFieldInternalCounter)  // fieldsCounter is global, fieldsCounterCopy is local.
+  _addField(fieldsLeftToAdd, WhereCombineOpCounter)
   {
-    if (abort === 1)
+    if (this._config.abort === true)
     {
-      this.aborting();
+      this._aborting();
     }
     else
     {
       console.log("Adding an additional clause...");
 
-      // Probably necessary to redefine the frame and frameDoc variables after the iframe reloads.
-      let frame = document.getElementById("main2").contentDocument.getElementsByTagName("iframe")[0];
-      let frameDoc = frame.contentDocument;
+      let targetFrame = this._getTargetFrame(this._config.targetFrameStr);
+      let targetFrameDoc = targetFrame.contentDocument;
 
       // Choose the "AND" option value.
-      let query = "select[name='WhereCombineOp" + addFieldInternalCounter.toString() + "'][id='WhereCombineOp" + addFieldInternalCounter.toString() + "']";
-      let addField = frameDoc.querySelectorAll(query);
+      let cssSelector =
+        `select[name='WhereCombineOp${WhereCombineOpCounter.toString()}']` +
+        `[id='WhereCombineOp${WhereCombineOpCounter.toString()}']`;
+      let addField = targetFrameDoc.querySelectorAll(cssSelector);
       addField[0].value = "AND";
 
-      ++addFieldInternalCounter;
-      --fieldsCounterCopy;
+      ++WhereCombineOpCounter;
+      --fieldsLeftToAdd;
 
       let onloadValue;
-      if (fieldsCounterCopy === 0)  // If no additional fields need to be added, set to continue to fillRuleDetails.
+      // If no additional fields are needed, continue onto the next part.
+      if (fieldsLeftToAdd === 0)
       {
-        onloadValue = "window.top.Segmentation.fillRuleDetails();";
+        onloadValue =
+          `window.top.${this._getInstanceName()}._fillRuleDetails();`;
       }
-      else  // Re-run this method if another field needs to be added.
+      else  // Re-run this method if other fields need to be added.
       {
-        onloadValue = "window.top.Segmentation.addField(" + fieldsCounterCopy.toString() + ", " + addFieldInternalCounter.toString() + ");";
+        onloadValue =
+          `window.top.${this._getInstanceName()}._addField(` +
+            `${fieldsLeftToAdd.toString()},` +
+            `${WhereCombineOpCounter.toString()}` +
+          `);`;
       }
-      frame.setAttribute("onload", onloadValue);
+      targetFrame.setAttribute("onload", onloadValue);
 
-      frameDoc.getElementById("theForm").submit();
+      targetFrameDoc.getElementById("theForm").submit();
     }
   }
 
-
-  static fillRuleDetails()
+  _fillRuleDetails()
   {
-    if (abort === 1)
+    if (this._config.abort === true)
     {
-      this.aborting();
+      this._aborting();
     }
     else
     {
       console.log("Filling out the rule details...");
 
-      let frame = document.getElementById("main2").contentDocument.getElementsByTagName("iframe")[0];
-      let frameDoc = frame.contentDocument;
+      let targetFrame = this._getTargetFrame(this._config.targetFrameStr);
+      let targetFrameDoc = targetFrame.contentDocument;
 
-      let ruleName, ruleNameValue;
-      let field0DropDown, field0Input, field1DropDown, field1Input, field2DropDown, field2Input;  // Is it drop-down, dropdown, or drop down? Hmm.
+      let ruleName = targetFrameDoc.querySelectorAll(
+        "input[name='RuleDisplayName'][class='ruletext']");
+      let ruleNameValue = "";
 
-      // field0 is always going to be used.
-      ruleName = frameDoc.querySelectorAll("input[name='RuleDisplayName'][class='ruletext']");
-      field0DropDown = frameDoc.querySelectorAll("select[name='WhereField0'][id='WhereField0']");
-      field0Input = frameDoc.querySelectorAll("input[name='WhereValue0'][id='WhereValue0']");
-      field0DropDown[0].value = field0;
-      field0Input[0].value = field0ValuesArray[i];
-      ruleNameValue = field0Abbrev + field0ValuesArray[i];
-
-      // If fieldsCounter is at least 1...
-      if (fieldsCounter >= 1)
+      for (
+        let i = 0,
+          dropDown, input, currentValue, currentValuesIndex, abbreviation;
+        i < this._config.fieldsLength;
+        ++i
+      )
       {
-        field1DropDown = frameDoc.querySelectorAll("select[name='WhereField1'][id='WhereField1']");
-        field1Input = frameDoc.querySelectorAll("input[name='WhereValue1'][id='WhereValue1']");
-        field1DropDown[0].value = field1;
-        field1Input[0].value = field1ValuesArray[j];
-        ruleNameValue = field0Abbrev + field0ValuesArray[i] + field1Abbrev + field1ValuesArray[j];
+        dropDown = targetFrameDoc.querySelectorAll(
+          `select[name='WhereField${i}'][id='WhereField${i}']`);
+        dropDown[0].value = this._config.fields[i].name;
+        input = targetFrameDoc.querySelectorAll(
+          `input[name='WhereValue${i}'][id='WhereValue${i}']`);
+        currentValuesIndex = this._config.fields[i].currentValuesIndex;
+        currentValue = this._config.fields[i].values[currentValuesIndex];
+        input[0].value = currentValue;
+        abbreviation = this._config.fields[i].abbreviation;
+        ruleNameValue += abbreviation + currentValue;
       }
-
-      if (fieldsCounter === 2)
-      {
-        field2DropDown = frameDoc.querySelectorAll("select[name='WhereField2'][id='WhereField2']");
-        field2Input = frameDoc.querySelectorAll("input[name='WhereValue2'][id='WhereValue2']");
-        field2DropDown[0].value = field2;
-        field2Input[0].value = field2ValuesArray[k];
-        ruleNameValue = field0Abbrev + field0ValuesArray[i] + field1Abbrev + field1ValuesArray[j] + field2Abbrev + field2ValuesArray[k];
-      }
-
       ruleName[0].value = ruleNameValue;
 
-      this.loopBack();
+      this._getNextValues();
     }
   }
 
-
-  static loopBack()
+  _getNextValues()
   {
-    if (abort === 1)
+    if (this._config.abort === true)
     {
-      this.aborting();
+      this._aborting();
     }
     else
     {
-      console.log("Incrementing the array index...");
-
-      // Exploits fallthrough behavior.
-      switch (fieldsCounter)
+      console.log("Getting the next field values...");
+      let is_finished = this._incrementValuesIndex();
+      if (is_finished === false)
       {
-        case 2:
-          ++k;
-          if (k === field2ValuesArrayLen)
-          {
-            k = 0;
-            ++j;
-          }
-        case 1:
-          if (fieldsCounter === 1)  // The if is to ensure the number k doesn't get incremented twice.
-          {
-            ++j;
-          }
-          if (j === field1ValuesArrayLen)
-          {
-            j = 0;
-            ++i;
-          }
-        default:
-          if (fieldsCounter === 0)
-          {
-            ++i;
-          }
-          if (i < field0ValuesArrayLen)
-          {
-            this.addSegmentRule();
-          }
-          else  // No more loops necessary.
-          {
-            i = undefined;
-            j = undefined;
-            k = undefined;
-            fieldsCounter = 0;
-            frame.setAttribute("onload", "");
-            console.log("All the rules have been added.");
-          }
-          break;
+        this._addSegmentRule();
+      }
+      else
+      {
+        this._aborting();
       }
     }
   }
 
-
-  static abort()
+  _incrementValuesIndex(nthLastIndex=1)
+  // Recursive
   {
-    abort = 1;
-    console.log("Attempting to abort...");
+    if (this._config.abort === true)
+    {
+      this._aborting();
+    }
+    else
+    {
+      let field = this._config.fields[this._config.fieldsLength-nthLastIndex];
+      console.log(`Getting the next ${field.name} value...`);
+      ++field.currentValuesIndex;
+      let is_finished = false;
+      // If the field's currentValuesIndex is out of bounds...
+      if (field.currentValuesIndex > field.valuesLength-1)
+      {
+        // And if not at the last index of each field...
+        if (nthLastIndex !== this._config.fieldsLength)
+        {
+          field.currentValuesIndex = 0;
+          is_finished = this._incrementValuesIndex(nthLastIndex+1);
+        }
+        else
+        {
+          console.log("All the rules have been added.");
+          is_finished = true;
+        }
+      }
+      return is_finished;
+    }
   }
 
-  static aborting()
+  _ingestConfig(config)
   {
-    // Attempt to reset variables.
-    i = undefined;
-    j = undefined;
-    k = undefined;
-    fieldsCounter = 0;
-    frame.setAttribute("onload", "");
+    console.log("Ingesting config...")
+    let updatedConfig = {
+      fields: config.fields,
+      fieldsLength: config.fields.length,
+      maximumRules: config.maximumRules,
+      targetFrameStr: config.targetFrameStr,
+      abort: false
+    };
+    for (let i = 0; i < updatedConfig.fieldsLength; ++i)
+    {
+      updatedConfig.fields[i].valuesLength =
+        updatedConfig.fields[i].values.length;
+      updatedConfig.fields[i].currentValuesIndex = 0;
+    }
+    return updatedConfig;
+  }
+
+  _checkMaximumRules()
+  {
+    let currentAmountOfRules = () => {
+      let amount = this._config.fields[0].valuesLength;
+      for (let i = 1; i < this._config.fieldsLength; ++i)
+      {
+        amount *= this._config.fields[i].valuesLength;
+      }
+      return amount;
+    };
+    if (currentAmountOfRules > this._config.maximumRules)
+    {
+      console.log(
+        `WARNING: Current configuration exceeds maximum rules allowed` +
+        `(${this._config.maximumRules}).`
+      )
+      return "no está bien";
+    }
+    else
+    {
+      return "ok";
+    }
+  }
+
+  _aborting()
+  {
+    // Reset currentValuesIndex positions.
+    for (let i = 0; i < this._config.fieldsLength; ++i)
+    {
+      this._config.fields[i].currentValuesIndex = 0;
+    }
+    let targetFrame = this._getTargetFrame(this._config.targetFrameStr);
+    targetFrame.setAttribute("onload", "");
     console.log("Execution of the segmentation script has been stopped.")
-    abort = 0;
+    this._config.abort = false;
+  }
+
+  _getTargetFrame(targetFrameStr)
+  {
+    return Function(`"use strict"; return ${targetFrameStr}`)();
+  }
+
+  _getInstanceName()
+  {
+    // Search through the global object for a name that resolves to this
+    // object.
+    for (var name in window)
+      if (window[name] == this)
+      {
+        return name;
+      }
   }
 }
 
