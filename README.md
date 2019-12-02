@@ -13,6 +13,6 @@ Inspired by Justin Hilborn's segmentation dashboard bookmarklet.
 
 - Best to navigate away from the page (for example: click on Folders in the navigation sidebar) to clean up if there was an error.
 
-## TODO
+## Todo
 1. Documentation
 2. Support opening segmentation dashboard from folder view
