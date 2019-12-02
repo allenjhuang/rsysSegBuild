@@ -16,5 +16,3 @@ Inspired by Justin Hilborn's segmentation dashboard bookmarklet.
 ## TODO
 1. Documentation
 2. Support opening segmentation dashboard from folder view
-3. It's kind of a memory hog...
-4. Fix \_checkMaximumRules

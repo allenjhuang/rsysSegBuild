@@ -6,22 +6,24 @@
 var config = {
   fields: [
     {
-      name: "EMAIL_ISP_",  // The actual column/field names, case-sensitive
-      abbreviation: "ISP-",  // Used for the rule names
-      values: ["AOL", "Gmail", "Hotmail", "Yahoo", "Other"]
-    },
-    {
-      name: "STATE_",
-      abbreviation: "__STATE-",
+      actualName: "EMAIL_ISP_",  // The actual column name, case-sensitive
+      ruleName: "ISP-",  // Used for the segmentation rule names
       values: [
-        "AL", "AR", "CA", 1, 2, 3, 4, 5, 6, 7, 8, 9, 0
+        "AOL", "Gmail", "Hotmail", "Yahoo", "Other"
       ]
     },
     {
-      name: "CITY_",
-      abbreviation: "__CITY-",  // Example: ISP-AOL__STATE-AL__CITY-Franklin
+      actualName: "STATE_",
+      ruleName: "__STATE-",
       values: [
-        "Franklin", 1, 2, 3, 4, 5, 6, 7, 8, 9, 0
+        "AL", "AR", "CA"
+      ]
+    },
+    {
+      actualName: "CITY_",
+      ruleName: "__CITY-",  // Example: ISP-AOL__STATE-AL__CITY-Franklin
+      values: [
+        "Franklin"
       ]
     }
   ],
@@ -53,7 +55,7 @@ var SegmentationBuilder = class
     {
       this._config = this._ingestConfig(config)
     }
-    if (check && this._checkMaximumRules === "ok")
+    if (check && this._checkMaximumRules() === "ok")
     {
       console.log("Starting...");
 
@@ -73,7 +75,8 @@ var SegmentationBuilder = class
 
   deleteFirstRule()
   {
-    // TODO: Suppress confirmation box.
+    // Confirmation box pops up. Can get past it with Selenium, but is out of
+    // this script's scope.
     // Check on abort flag. If set to true, begin abort process.
     if (this._config.abort === true)
     {
@@ -226,29 +229,29 @@ var SegmentationBuilder = class
       let targetFrame = this._getTargetFrame(this._config.targetFrameStr);
       let targetFrameDoc = targetFrame.contentDocument;
 
-      let ruleName = targetFrameDoc.querySelectorAll(
+      let ruleNameInput = targetFrameDoc.querySelectorAll(
         "input[name='RuleDisplayName'][class='ruletext']");
-      let ruleNameValue = "";
+      let ruleNameInputValue = "";
 
       for (
         let i = 0,
-          dropDown, input, currentValue, currentValuesIndex, abbreviation;
+          dropDown, input, currentValue, currentValuesIndex, ruleName;
         i < this._config.fieldsLength;
         ++i
       )
       {
         dropDown = targetFrameDoc.querySelectorAll(
           `select[name='WhereField${i}'][id='WhereField${i}']`);
-        dropDown[0].value = this._config.fields[i].name;
+        dropDown[0].value = this._config.fields[i].actualName;
         input = targetFrameDoc.querySelectorAll(
           `input[name='WhereValue${i}'][id='WhereValue${i}']`);
         currentValuesIndex = this._config.fields[i].currentValuesIndex;
         currentValue = this._config.fields[i].values[currentValuesIndex];
         input[0].value = currentValue;
-        abbreviation = this._config.fields[i].abbreviation;
-        ruleNameValue += abbreviation + currentValue;
+        ruleName = this._config.fields[i].ruleName;
+        ruleNameInputValue += ruleName + currentValue;
       }
-      ruleName[0].value = ruleNameValue;
+      ruleNameInput[0].value = ruleNameInputValue;
 
       this._getNextValues();
     }
@@ -285,7 +288,7 @@ var SegmentationBuilder = class
     else
     {
       let field = this._config.fields[this._config.fieldsLength-nthLastIndex];
-      console.log(`Getting the next ${field.name} value...`);
+      console.log(`Getting the next ${field.actualName} value...`);
       ++field.currentValuesIndex;
       let is_finished = false;
       // If the field's currentValuesIndex is out of bounds...
@@ -328,14 +331,16 @@ var SegmentationBuilder = class
 
   _checkMaximumRules()
   {
-    let currentAmountOfRules = () => {
-      let amount = this._config.fields[0].valuesLength;
-      for (let i = 1; i < this._config.fieldsLength; ++i)
+    let currentAmountOfRules = (() =>
       {
-        amount *= this._config.fields[i].valuesLength;
+        let amount = this._config.fields[0].valuesLength;
+        for (let i = 1; i < this._config.fieldsLength; ++i)
+        {
+          amount *= this._config.fields[i].valuesLength;
+        }
+        return amount;
       }
-      return amount;
-    };
+    )();
     if (currentAmountOfRules > this._config.maximumRules)
     {
       console.log(
